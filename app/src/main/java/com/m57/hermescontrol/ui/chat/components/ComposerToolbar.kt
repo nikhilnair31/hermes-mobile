@@ -114,7 +114,7 @@ fun ComposerToolbar(
     reasoningWireLevel: String? = null,
     pendingReasoningLevel: String? = null,
     isSessionReady: Boolean = true,
-    isGenerating: Boolean = false,
+    canInterrupt: Boolean = false,
     onMicHoldStart: () -> Unit = {},
     onMicHoldEnd: () -> Unit = {},
     onMicHoldCancel: () -> Unit = {},
@@ -131,7 +131,7 @@ fun ComposerToolbar(
     // release that submits the note can never be lost between recompositions.
     val currentIsConnected = rememberUpdatedState(isConnected)
     val currentShowSend = rememberUpdatedState(showSend)
-    val currentIsGenerating = rememberUpdatedState(isGenerating)
+    val currentCanInterrupt = rememberUpdatedState(canInterrupt)
     val currentOnMicTap = rememberUpdatedState(onMicTap)
     val currentOnMicHoldStart = rememberUpdatedState(onMicHoldStart)
     val currentOnMicHoldEnd = rememberUpdatedState(onMicHoldEnd)
@@ -140,7 +140,7 @@ fun ComposerToolbar(
         Modifier.pointerInput(Unit) {
             micHoldHandler(
                 isEnabled = {
-                    currentIsConnected.value && currentShowSend.value && !currentIsGenerating.value
+                    currentIsConnected.value && currentShowSend.value && !currentCanInterrupt.value
                 },
                 onShortPress = { currentOnMicTap.value() },
                 onHoldStart = { currentOnMicHoldStart.value() },
@@ -152,7 +152,7 @@ fun ComposerToolbar(
         Modifier.pointerInput(Unit) {
             micHoldHandler(
                 isEnabled = {
-                    currentIsConnected.value && !currentShowSend.value && !currentIsGenerating.value
+                    currentIsConnected.value && !currentShowSend.value && !currentCanInterrupt.value
                 },
                 onShortPress = { currentOnMicTap.value() },
                 onHoldStart = { currentOnMicHoldStart.value() },
@@ -456,14 +456,17 @@ fun ComposerToolbar(
             }
         }
 
-        // Flat slot — mic while idle; while the agent is generating it keeps
-        // queue-send available (the action button carries Stop).
+        // Flat slot — mic while idle; while a generation can be interrupted it
+        // keeps queue-send available (the action button carries Stop). During
+        // session preparation the mic stays here and the action button is a
+        // disabled send: Stop must not appear when there is nothing to
+        // interrupt (review, PR #1250).
         AnimatedVisibility(
             visible = showSend,
             enter = fadeIn() + scaleIn(initialScale = 0.8f),
             exit = fadeOut() + scaleOut(targetScale = 0.8f),
         ) {
-            if (isGenerating) {
+            if (canInterrupt) {
                 FilledIconButton(
                     onClick = onSend,
                     enabled = canSend,
@@ -497,18 +500,18 @@ fun ComposerToolbar(
             }
         }
 
-        // Action button — Stop while the agent generates, send when a send is
-        // possible, mic / stop-listening otherwise.
+        // Action button — Stop while a generation can be interrupted, send
+        // when a send is possible, mic / stop-listening otherwise.
         FilledIconButton(
             onClick = {
                 when {
-                    isGenerating -> onStopGeneration()
+                    canInterrupt -> onStopGeneration()
                     showSend -> onSend()
                 }
             },
             enabled = if (showSend) canSend else isConnected,
             colors =
-                if (!showSend && (isListening || isGenerating)) {
+                if (!showSend && (isListening || canInterrupt)) {
                     listeningIconButtonColors()
                 } else {
                     IconButtonDefaults.filledIconButtonColors(
@@ -521,17 +524,17 @@ fun ComposerToolbar(
                     .size(ControlSize)
                     .testTag(
                         when {
-                            isGenerating -> "stop_button"
+                            canInterrupt -> "stop_button"
                             showSend -> "send_button"
                             isListening -> "mic_stop_button"
                             else -> "mic_button"
                         },
-                    ).then(if (showSend || isGenerating) Modifier else actionMicGesture),
+                    ).then(if (showSend || canInterrupt) Modifier else actionMicGesture),
         ) {
             Crossfade(
                 targetState =
                     when {
-                        isGenerating -> ActionGlyph.STOP
+                        canInterrupt -> ActionGlyph.STOP
                         showSend -> ActionGlyph.SEND
                         isListening -> ActionGlyph.STOP
                         else -> ActionGlyph.VOICE
@@ -550,7 +553,7 @@ fun ComposerToolbar(
                         Icon(
                             imageVector = Icons.Default.Stop,
                             contentDescription =
-                                if (isGenerating) {
+                                if (canInterrupt) {
                                     stringResource(R.string.chat_voice_stop_generating)
                                 } else {
                                     "Stop listening"
