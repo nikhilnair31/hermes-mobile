@@ -443,6 +443,7 @@ fun ChatScreen(
                 }
             },
             launchExternalActivity = launchExternalActivity,
+            isTranscribingVoiceNote = state.isTranscribingVoiceNote,
             context = context,
         )
 
@@ -894,6 +895,7 @@ fun ChatScreen(
                 voiceNoteAmplitude = mediaLaunchers.voiceNoteAmplitude,
                 onStopGeneration = { viewModel.interruptSession() },
                 isAgentTyping = state.isAgentTyping,
+                canInterrupt = state.canInterrupt,
                 isConnected = state.isConnected,
                 isSessionReady = state.isSessionReady && !timelineState.isHistorical,
                 sessionPreparationFailed = state.resumeError != null,
