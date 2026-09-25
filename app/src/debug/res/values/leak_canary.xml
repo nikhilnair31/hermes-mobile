@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Debug builds only: hide the LeakCanary ("Leaks") launcher icon.
+        LeakCanary itself stays active for leak detection; only its launcher
+        entry point is disabled so debug installs do not add an extra app icon.
+    -->
+    <bool name="leak_canary_add_launcher_icon">false</bool>
+</resources>

@@ -8,6 +8,7 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import android.widget.Toast
 import java.io.File
 
 /**
@@ -146,8 +147,12 @@ class VoiceNoteRecorder(
             audioManager = am
             focusRequest = request
             Log.i(TAG, "voice note audio focus granted=$granted")
+            if (!granted) {
+                Toast.makeText(context, "Couldn't pause other audio", Toast.LENGTH_SHORT).show()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "voice note audio focus request failed", e)
+            Toast.makeText(context, "Couldn't pause other audio", Toast.LENGTH_SHORT).show()
         }
     }
 
