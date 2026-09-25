@@ -1,6 +1,9 @@
 package com.m57.hermescontrol.ui.chat
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.SystemClock
@@ -14,6 +17,10 @@ import java.io.File
  * decides what to do with the clip. 16 kHz mono AAC keeps the payload small
  * (roughly 0.5 MB at [MAX_DURATION_MS]) so it uploads quickly to the
  * dashboard's transcription endpoint.
+ *
+ * While a recording is live the recorder holds a TRANSIENT audio focus, so
+ * other media (music, podcasts) pauses for the duration and resumes on
+ * release — the same behavior as Telegram's press-and-hold voice notes.
  */
 class VoiceNoteRecorder(
     private val context: Context,
@@ -36,6 +43,8 @@ class VoiceNoteRecorder(
     private var recorder: MediaRecorder? = null
     private var outputFile: File? = null
     private var startedAtMs = 0L
+    private var audioManager: AudioManager? = null
+    private var focusRequest: AudioFocusRequest? = null
 
     val isActive: Boolean
         get() = recorder != null
@@ -69,6 +78,7 @@ class VoiceNoteRecorder(
             recorder = mediaRecorder
             outputFile = file
             startedAtMs = SystemClock.elapsedRealtime()
+            requestTransientFocus()
             Log.i(TAG, "Voice note recording started: ${file.name}")
             true
         } catch (e: Exception) {
@@ -111,10 +121,49 @@ class VoiceNoteRecorder(
     /** Peak amplitude of the current recording window — 0 when idle. */
     fun currentAmplitude(): Int = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
 
+    /**
+     * Ask for TRANSIENT audio focus so music and other media pause while the
+     * note records, and resume when focus is abandoned. Best-effort: a denial
+     * or a missing service never blocks the recording.
+     */
+    private fun requestTransientFocus() {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            val request =
+                AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build(),
+                    )
+                    .setWillPauseWhenDucked(false)
+                    .setOnAudioFocusChangeListener { change ->
+                        Log.i(TAG, "voice note audio focus change: $change")
+                    }
+                    .build()
+            val granted = am.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            audioManager = am
+            focusRequest = request
+            Log.i(TAG, "voice note audio focus granted=$granted")
+        } catch (e: Exception) {
+            Log.w(TAG, "voice note audio focus request failed", e)
+        }
+    }
+
+    private fun abandonFocus() {
+        val am = audioManager ?: return
+        val request = focusRequest ?: return
+        runCatching { am.abandonAudioFocusRequest(request) }
+        audioManager = null
+        focusRequest = null
+    }
+
     private fun releaseQuietly() {
         runCatching { recorder?.release() }
         recorder = null
         outputFile = null
         startedAtMs = 0L
+        abandonFocus()
     }
 }
